@@ -1,0 +1,29 @@
+{
+  "name": "opencode-tor-rotate",
+  "version": "3.0.0",
+  "description": "OpenCode V2 plugin: on a free-tier limit, rotate the Tor exit IP, validate it, and resume the sessions.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./tui": "./tui.js"
+  },
+  "files": [
+    "index.js",
+    "tui.js",
+    "src",
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "bun scripts/build-tui.ts",
+    "test:tui": "bun test test/tui.render.test.tsx"
+  },
+  "devDependencies": {
+    "@opentui/core": "0.6.1",
+    "@opentui/solid": "0.6.1",
+    "solid-js": "1.9.12"
+  }
+}
