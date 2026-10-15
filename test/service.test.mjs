@@ -55,7 +55,7 @@ test("outage failure after maxAttempts is reported, not recovered", async () => 
   await svc.enable()
   let recovered = false
   svc.on("recovered", () => (recovered = true))
-  const r = await svc.runOutage({})
+  const r = await svc.runOutage({ model: "m", trigger: "test" })
   assert.equal(r.ok, false)
   assert.equal(r.attempts, 3)
   assert.equal(recovered, false)
