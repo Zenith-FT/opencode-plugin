@@ -26,7 +26,7 @@ function setup(cfg = {}, enabled = true) {
   return { h, sent, outages, notices, timers, retry, service, captured, setEnabled: (v) => (enabled = v) }
 }
 const soft = { type: "provider.rate-limit", status: 429, message: "Rate limit exceeded" }
-const hard = { type: "provider.rate-limit", status: 429, message: "x", response: { body: '{\"error\":\"EndOfFreeQuota\"}' } }
+const hard = { type: "provider.rate-limit", status: 429, message: "x", response: { body: '{"error":"EndOfFreeQuota"}' } }
 
 test("off: never touches retry, only suggests tor on", () => {
   const t = setup({}, false)
