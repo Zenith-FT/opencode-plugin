@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events"
 
 import { recover } from "./outage.js"
-import { probeModel } from "./probe.js"
+import { endpointFor, probeModel, stripProvider } from "./probe.js"
 import { SocksAgent, httpsRequest } from "./socks.js"
 
 export function nextResetUtc(now = new Date()) {
@@ -44,6 +44,7 @@ export class TorService extends EventEmitter {
       notice: undefined,
     }
     this.inflight = undefined
+    this.fp = undefined // last real-client fingerprint { baseURL, headers, at } (see noteFingerprint)
   }
 
   getAgent() {
@@ -63,7 +64,32 @@ export class TorService extends EventEmitter {
   }
 
   status() {
-    return JSON.parse(JSON.stringify({ ...this.s, resetAt: nextResetUtc(new Date(this.now())), cfg: { maxAttempts: this.cfg.maxAttempts, timeoutMs: this.cfg.timeoutMs } }))
+    return JSON.parse(
+      JSON.stringify({
+        ...this.s,
+        resetAt: nextResetUtc(new Date(this.now())),
+        fp: this.fp ? { at: this.fp.at } : null,
+        cfg: { maxAttempts: this.cfg.maxAttempts, timeoutMs: this.cfg.timeoutMs },
+      }),
+    )
+  }
+
+  /**
+   * Remember the real client's fingerprint (captured by the model.request hook).
+   * Validation probes replay it instead of forging one: the gateway rejects
+   * forged fingerprints with 403 FreeTierError. Returns true when stored.
+   */
+  noteFingerprint(fp) {
+    if (!fp || typeof fp !== "object" || !fp.headers || typeof fp.headers !== "object") return false
+    if (Object.keys(fp.headers).length === 0) return false
+    const first = !this.fp
+    this.fp = {
+      baseURL: typeof fp.baseURL === "string" && fp.baseURL ? fp.baseURL : undefined,
+      headers: { ...fp.headers },
+      at: this.now(),
+    }
+    if (first) this.log("real client fingerprint captured: probes will replay it")
+    return true
   }
 
   async ensureTor() {
@@ -117,13 +143,20 @@ export class TorService extends EventEmitter {
     return this.status()
   }
 
-  probeEndpoint() {
-    return this.cfg.probeEndpoint ?? `${(this.cfg.upstream ?? "https://opencode.ai").replace(/\/$/, "")}/zen/v1/chat/completions`
+  probeEndpoint(model) {
+    const base =
+      this.fp?.baseURL ??
+      (typeof this.cfg.probeEndpoint === "string" ? this.cfg.probeEndpoint.replace(/\/(chat\/completions|responses)$/, "") : undefined) ??
+      this.cfg.upstream ??
+      "https://opencode.ai"
+    if (!this.fp?.baseURL && !this.cfg.probeEndpoint) return endpointFor(`${base.replace(/\/$/, "")}/zen/v1`, model)
+    return endpointFor(base, model)
   }
 
   async validateIp(model) {
     const key = await this.getKey()
-    return this.probeFn({ model: model ?? this.cfg.defaultModel, key, agent: this.agent, hardPattern: this.cfg.hardPattern, endpoint: this.probeEndpoint() })
+    const gatewayModel = stripProvider(model ?? this.cfg.defaultModel)
+    return this.probeFn({ model: gatewayModel, key, agent: this.agent, hardPattern: this.cfg.hardPattern, endpoint: this.probeEndpoint(gatewayModel), fingerprint: this.fp })
   }
 
   /** Runs the recovery procedure once at a time. Resolves { ok, ip, reason, attempts }. */
@@ -175,7 +208,8 @@ export class TorService extends EventEmitter {
   /** Direct (non-Tor) probe, used at startup to learn whether the user's own IP is out of quota. */
   async startupProbe() {
     const key = await this.getKey()
-    const r = await this.probeFn({ model: this.cfg.defaultModel, key, hardPattern: this.cfg.hardPattern, endpoint: this.probeEndpoint() })
+    const gatewayModel = stripProvider(this.cfg.defaultModel)
+    const r = await this.probeFn({ model: gatewayModel, key, hardPattern: this.cfg.hardPattern, endpoint: this.probeEndpoint(gatewayModel), fingerprint: this.fp })
     this.s.probe = { ok: r.ok, kind: r.kind, status: r.status, detail: r.detail, at: this.now() }
     if (r.kind) this.notice(`Direct IP is limited (${r.kind}). Run \`tor on\` to route through Tor.`, "warning")
     this.emit("change")

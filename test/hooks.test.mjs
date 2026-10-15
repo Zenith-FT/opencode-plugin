@@ -7,10 +7,12 @@ function setup(cfg = {}, enabled = true) {
   const sent = []
   const outages = []
   const notices = []
+  const captured = []
   const service = Object.assign(new EventEmitter(), {
     isEnabled: () => enabled,
     noteResult() {},
     notice: (t) => notices.push(t),
+    noteFingerprint: (fp) => (captured.push(fp), true),
     runOutage: async (o) => (outages.push(o), { ok: true }),
   })
   const ctx = { session: { prompt: async (i) => sent.push(i) } }
@@ -21,10 +23,10 @@ function setup(cfg = {}, enabled = true) {
     h.hooks.retry(e)
     return e
   }
-  return { h, sent, outages, notices, timers, retry, service, setEnabled: (v) => (enabled = v) }
+  return { h, sent, outages, notices, timers, retry, service, captured, setEnabled: (v) => (enabled = v) }
 }
 const soft = { type: "provider.rate-limit", status: 429, message: "Rate limit exceeded" }
-const hard = { type: "provider.rate-limit", status: 429, message: "x", response: { body: '{"error":"EndOfFreeQuota"}' } }
+const hard = { type: "provider.rate-limit", status: 429, message: "x", response: { body: '{\"error\":\"EndOfFreeQuota\"}' } }
 
 test("off: never touches retry, only suggests tor on", () => {
   const t = setup({}, false)
@@ -112,4 +114,20 @@ test("model.request rewrites only opencode.ai baseURL, only when enabled", () =>
   const off = { baseURL: "https://opencode.ai/zen/v1" }
   t.h.hooks.modelRequest(off)
   assert.equal(off.baseURL, "https://opencode.ai/zen/v1")
+})
+
+test("model.request captures the real fingerprint before rewriting", () => {
+  const t = setup()
+  const headers = { "User-Agent": "opencode/2.0.21", "x-opencode-session": "ses_x", "content-length": "5" }
+  const e = { baseURL: "https://opencode.ai/zen/v1/", headers }
+  t.h.hooks.modelRequest(e)
+  assert.equal(e.baseURL, "http://127.0.0.1:9253/zen/v1")
+  assert.equal(t.captured.length, 1)
+  assert.equal(t.captured[0].baseURL, "https://opencode.ai/zen/v1")
+  assert.deepEqual(t.captured[0].headers, headers)
+  t.setEnabled(false)
+  const off2 = { baseURL: "https://opencode.ai/zen/v1", headers }
+  t.h.hooks.modelRequest(off2)
+  assert.equal(off2.baseURL, "https://opencode.ai/zen/v1")
+  assert.equal(t.captured.length, 2, "capture happens even with Tor off, rewrite does not")
 })

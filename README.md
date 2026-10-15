@@ -14,6 +14,12 @@ to continue. Only `opencode.ai` traffic ever goes through Tor, and **only when y
 - **Recovery**: note current IP -> new Tor circuit -> make sure the IP differs -> test request to the model
   through Tor -> repeat. Max **10 attempts / 5 minutes**. On success every session that was stopped by the limit
   (sub-agents included) receives `Continue where you left off`. On failure a popup/toast explains why.
+  The test request **replays the real client's fingerprint** (headers captured from the `model.request`
+  hook: session affinity, UA, project...): the gateway answers `403 FreeTierError` to forged fingerprints,
+  so replay is what makes validation pass. Before any real request exists, a forged fingerprint is used
+  (correct id shapes, may still 403 — informational only).
+- **Endpoint per model**: chat models validate against `<base>/chat/completions`, `muse-spark-*-free`
+  against `<base>/responses` (OpenAI Responses API) — the base URL is the one the real client used.
 - **UI**: a popup while recovery runs, a sidebar panel (mode, exit IP + "is a Tor exit" check, rotations,
   requests ok/failed, attempts, quota reset time in your local time, number of Tor exits from Onionoo, direct-IP
   quota state) and a status line.

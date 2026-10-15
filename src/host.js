@@ -100,6 +100,9 @@ function clientService(port) {
     getAgent: () => undefined,
     noteResult() {},
     notice() {},
+    noteFingerprint() {
+      return false
+    },
     on: (ev, fn) => listeners.add(fn),
     off: (ev, fn) => listeners.delete(fn),
     runOutage: async ({ model }) => ({ ok: false, reason: "outage must run in the owner process", model }),

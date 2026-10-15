@@ -55,7 +55,7 @@ test("outage failure after maxAttempts is reported, not recovered", async () => 
   await svc.enable()
   let recovered = false
   svc.on("recovered", () => (recovered = true))
-  const r = await svc.runOutage({ model: "m" })
+  const r = await svc.runOutage({})
   assert.equal(r.ok, false)
   assert.equal(r.attempts, 3)
   assert.equal(recovered, false)
@@ -93,4 +93,26 @@ test("tor start failure surfaces in state", async () => {
 test("reset time is next 00:00 UTC", () => {
   assert.equal(nextResetUtc(new Date("2026-10-12T13:00:00Z")), "2026-10-13T00:00:00.000Z")
   assert.equal(nextResetUtc(new Date("2026-12-31T23:59:59Z")), "2027-01-01T00:00:00.000Z")
+})
+
+test("noteFingerprint stores the capture; validateIp replays it with a derived endpoint", async () => {
+  const probed = []
+  const { svc } = makeService({ probe: async (o) => (probed.push(o), { ok: true, status: 200, detail: "ok" }) })
+  assert.equal(svc.noteFingerprint(null), false)
+  assert.equal(svc.noteFingerprint({ headers: {} }), false)
+  assert.equal(svc.noteFingerprint({ baseURL: "https://opencode.ai/inference/v1", headers: { "user-agent": "u" } }), true)
+  await svc.validateIp("opencode/big-pickle")
+  assert.equal(probed.length, 1)
+  assert.equal(probed[0].model, "big-pickle")
+  assert.equal(probed[0].endpoint, "https://opencode.ai/inference/v1/chat/completions")
+  assert.deepEqual(probed[0].fingerprint.headers, { "user-agent": "u" })
+  assert.equal(typeof svc.status().fp.at, "number")
+})
+
+test("responses models validate against /responses", async () => {
+  const probed = []
+  const { svc } = makeService({ probe: async (o) => (probed.push(o), { ok: true, status: 200, detail: "ok" }) })
+  await svc.validateIp("muse-spark-1.3-contributor-free")
+  assert.equal(probed[0].model, "muse-spark-1.3-contributor-free")
+  assert.equal(probed[0].endpoint, "https://opencode.ai/zen/v1/responses")
 })

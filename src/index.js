@@ -52,7 +52,6 @@ export function createHooks({ ctx, service, port, cfg, log, schedule = setTimeou
 
   const hooks = {
     modelRequest(e) {
-      if (!service.isEnabled()) return
       let orig
       try {
         orig = new URL(e.baseURL ?? ZEN_BASE)
@@ -60,6 +59,12 @@ export function createHooks({ ctx, service, port, cfg, log, schedule = setTimeou
         return
       }
       if (orig.host !== new URL(cfg.upstream ?? "https://opencode.ai").host) return
+      // Remember the real client's fingerprint (headers + base URL): validation
+      // probes replay it instead of forging one (the gateway 403s forged ones).
+      // Captured even with Tor off so it is ready before it is needed. Missing
+      // on older OpenCode builds (no e.headers): probes fall back to forged.
+      service.noteFingerprint?.({ baseURL: `${orig.protocol}//${orig.host}${orig.pathname.replace(/\/+$/, "")}`, headers: e.headers })
+      if (!service.isEnabled()) return
       e.baseURL = `http://127.0.0.1:${port}${orig.pathname.replace(/\/$/, "")}`
     },
     httpResponse(e) {
